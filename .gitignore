@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+dist/
+.vscode/
+
+# 本地密钥与运行产物（不要提交）
+data/.jwt_secret
+data/admin-initial-password.txt
+data/logs/
+data/image_cache/
+data/backups/
+.env
+.env.local
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db

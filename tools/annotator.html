@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>中华纹脉 · 纹样标注台</title>
+<style>
+  :root{--ink:#2b2118;--paper:#f7f3ea;--gold:#8a6d3b;--green:#2f6b4f;--red:#a63b2f}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Microsoft YaHei",sans-serif;background:var(--paper);color:var(--ink)}
+  header{position:sticky;top:0;background:#fff;border-bottom:1px solid #e2d9c9;padding:10px 16px;z-index:5}
+  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .title{font-weight:bold}
+  .progress{flex:1;height:10px;background:#eae2d4;border-radius:6px;overflow:hidden;min-width:160px}
+  .progress>i{display:block;height:100%;background:var(--green);width:0}
+  .btn{border:1px solid #d8cdb9;background:#fff;border-radius:8px;padding:6px 12px;cursor:pointer}
+  .btn:hover{background:#f3ece0}
+  .btn.primary{background:var(--green);color:#fff;border-color:var(--green)}
+  .btn.danger{background:#fff;color:var(--red);border-color:var(--red)}
+  .layout{display:grid;grid-template-columns:1fr 460px;gap:16px;padding:16px;max-width:1500px;margin:0 auto}
+  .viewer{background:#111;border-radius:12px;display:flex;align-items:center;justify-content:center;min-height:520px;position:relative}
+  .viewer img{max-width:100%;max-height:78vh;object-fit:contain}
+  .thumbs{position:absolute;bottom:8px;left:8px;display:flex;gap:6px}
+  .thumbs img{width:56px;height:56px;object-fit:cover;border:2px solid #fff;border-radius:6px;cursor:pointer}
+  .panel{background:#fff;border-radius:12px;padding:16px}
+  h2{font-size:18px;margin:0 0 8px}
+  .meta{font-size:13px;color:#555;line-height:1.7;margin-bottom:10px}
+  .desc{font-size:13px;background:#faf7f1;border-left:3px solid var(--gold);padding:8px 10px;border-radius:4px;margin-bottom:12px;max-height:120px;overflow:auto}
+  .hint{font-size:13px;color:var(--gold);margin-bottom:8px}
+  .labels{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .labels .btn{padding:10px}
+  .row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  select,textarea{width:100%;border:1px solid #d8cdb9;border-radius:8px;padding:8px;font-family:inherit}
+  textarea{height:60px;margin-top:8px}
+  .side{margin-top:14px;max-height:260px;overflow:auto;border-top:1px solid #eee}
+  .item{display:flex;gap:8px;align-items:center;padding:6px;border-bottom:1px solid #f1ece2;cursor:pointer;font-size:12px}
+  .item.active{background:#f1ece2}
+  .dot{width:8px;height:8px;border-radius:50%;background:#ccc;flex:0 0 8px}
+  .dot.confirmed{background:var(--green)}.dot.discarded{background:var(--red)}
+  .save-state{font-size:12px;color:#888}
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <span class="title">中华纹脉 · 纹样标注台</span>
+    <div class="progress"><i id="bar"></i></div>
+    <span id="count"></span>
+    <button class="btn" id="f-all">全部</button>
+    <button class="btn" id="f-pending">待处理</button>
+    <button class="btn" id="f-hint">有提示</button>
+    <button class="btn" id="f-done">已确认</button>
+    <button class="btn" id="f-discard">已舍弃</button>
+    <a class="btn primary" href="/api/export">导出标注 CSV</a>
+    <label class="save-state"><input type="checkbox" id="auto-next" checked> 自动跳下一张</label>
+    <span class="save-state" id="save-state"></span>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="viewer">
+    <img id="main-img" alt="">
+    <div class="thumbs" id="thumbs"></div>
+  </div>
+
+  <div class="panel">
+    <h2 id="title">加载中…</h2>
+    <div class="meta" id="meta"></div>
+    <div class="desc" id="desc"></div>
+    <div class="hint" id="hint"></div>
+
+    <div class="labels" id="labels"></div>
+    <div class="row">
+      <button class="btn" id="confirm-hint">确认自动提示</button>
+      <button class="btn danger" id="discard">舍弃（无纹样/非载体）</button>
+      <button class="btn" id="undo">重置本张</button>
+    </div>
+    <div class="row">
+      <select id="secondary"><option value="">次标签（可选）</option></select>
+    </div>
+    <textarea id="note" placeholder="备注（可选）：例如裁剪困难、图案不清晰、疑似误判…"></textarea>
+
+    <div class="row">
+      <button class="btn" id="prev">← 上一张</button>
+      <button class="btn" id="next">下一张 →</button>
+      <span class="save-state">快捷键：1–8 分类，D 舍弃，Enter 确认提示，←/→ 翻页</span>
+    </div>
+
+    <div class="side" id="list"></div>
+  </div>
+</div>
+
+<script>
+const CLASSES = ["龙纹","凤纹","花卉纹","缠枝/卷草纹","云纹","几何纹","文字纹","人物纹","其他"];
+let records = [], view = [], current = 0, filter = "all";
+
+const $ = id => document.getElementById(id);
+
+async function load(){
+  records = await (await fetch("/api/records")).json();
+  CLASSES.forEach((c,i)=>{
+    const b = document.createElement("button");
+    b.className = "btn"; b.textContent = (i+1) + " " + c;
+    b.onclick = () => label(c);
+    $("labels").appendChild(b);
+    const o = document.createElement("option"); o.value = c; o.textContent = c;
+    $("secondary").appendChild(o);
+  });
+  rebuild();
+}
+
+function statusOf(r){ return (r.annotation && r.annotation.status) || "pending"; }
+
+function rebuild(){
+  view = records.filter(r=>{
+    const s = statusOf(r);
+    if(filter==="pending") return s==="pending";
+    if(filter==="done") return s==="confirmed";
+    if(filter==="discard") return s==="discarded";
+    if(filter==="hint") return !!r.motif_hint && s==="pending";
+    return true;
+  });
+  if(current >= view.length) current = Math.max(0, view.length-1);
+  render(); renderList();
+}
+
+function render(){
+  const r = view[current];
+  const done = records.filter(x=>statusOf(x)!=="pending").length;
+  $("bar").style.width = (done/records.length*100).toFixed(1) + "%";
+  $("count").textContent = `已处理 ${done}/${records.length}｜当前 ${view.length?current+1:0}/${view.length}`;
+  if(!r){ $("title").textContent = "没有符合条件的记录"; $("main-img").src=""; return; }
+
+  $("title").textContent = r.title || r.source_id;
+  $("meta").innerHTML = [
+    ["来源", r.source], ["年代", r.dynasty || r.date_text || "未知"],
+    ["世纪", r.century || "未知"], ["载体", r.carrier || "未知"],
+    ["当前标签", (r.annotation && r.annotation.motif_type) || r.motif_type]
+  ].map(([k,v])=>`<b>${k}</b>：${v}`).join("<br>");
+  $("desc").textContent = r.description || "（无描述）";
+  $("hint").textContent = r.motif_hint ? "自动提示：" + r.motif_hint : "无自动提示，请依据图案判断";
+  $("note").value = (r.annotation && r.annotation.note) || "";
+  $("secondary").value = (r.annotation && r.annotation.motif_type_secondary) || "";
+
+  $("main-img").src = r.images[0] || "";
+  $("thumbs").innerHTML = "";
+  r.images.forEach(u=>{
+    const t = document.createElement("img"); t.src = u;
+    t.onclick = ()=> $("main-img").src = u;
+    $("thumbs").appendChild(t);
+  });
+}
+
+function renderList(){
+  $("list").innerHTML = "";
+  view.forEach((r,i)=>{
+    const d = document.createElement("div");
+    d.className = "item" + (i===current ? " active":"");
+    d.innerHTML = `<span class="dot ${statusOf(r)}"></span><span>${r.title || r.source_id}</span>`;
+    d.onclick = ()=>{ current = i; render(); renderList(); };
+    $("list").appendChild(d);
+  });
+}
+
+async function save(patch){
+  const r = view[current]; if(!r) return;
+  r.annotation = Object.assign({}, r.annotation||{}, patch);
+  $("save-state").textContent = "保存中…";
+  await fetch("/api/save", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({source:r.source, source_id:r.source_id, ...r.annotation})});
+  $("save-state").textContent = "已保存 " + new Date().toLocaleTimeString();
+}
+
+function step(){
+  if($("auto-next").checked){ current = Math.min(view.length-1, current+1); render(); renderList(); }
+  else { render(); renderList(); }
+}
+
+async function label(name){ await save({status:"confirmed", motif_type:name}); step(); }
+async function discard(){ await save({status:"discarded", motif_type:""}); step(); }
+async function confirmHint(){
+  const r = view[current]; if(!r || !r.motif_hint) return;
+  await save({status:"confirmed", motif_type:r.motif_hint}); step();
+}
+async function resetOne(){ await save({status:"pending", motif_type:"", motif_type_secondary:"", note:""}); render(); renderList(); }
+
+$("discard").onclick = discard;
+$("confirm-hint").onclick = confirmHint;
+$("undo").onclick = resetOne;
+$("prev").onclick = ()=>{ current=Math.max(0,current-1); render(); renderList(); };
+$("next").onclick = ()=>{ current=Math.min(view.length-1,current+1); render(); renderList(); };
+$("note").onchange = ()=> save({note:$("note").value});
+$("secondary").onchange = ()=> save({motif_type_secondary:$("secondary").value});
+$("f-all").onclick = ()=>{filter="all"; current=0; rebuild();};
+$("f-pending").onclick = ()=>{filter="pending"; current=0; rebuild();};
+$("f-hint").onclick = ()=>{filter="hint"; current=0; rebuild();};
+$("f-done").onclick = ()=>{filter="done"; current=0; rebuild();};
+$("f-discard").onclick = ()=>{filter="discard"; current=0; rebuild();};
+
+document.addEventListener("keydown", e=>{
+  if(e.target.tagName === "TEXTAREA") return;
+  if(e.key >= "1" && e.key <= "9") label(CLASSES[Number(e.key)-1]);
+  else if(e.key.toLowerCase() === "d") discard();
+  else if(e.key === "Enter") confirmHint();
+  else if(e.key === "ArrowLeft"){ current=Math.max(0,current-1); render(); renderList(); }
+  else if(e.key === "ArrowRight"){ current=Math.min(view.length-1,current+1); render(); renderList(); }
+});
+
+load();
+</script>
+</body>
+</html>
