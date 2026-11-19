@@ -790,30 +790,27 @@ def history_payload(db: Session, user_id: int, limit: int) -> dict:
 @app.get("/api/me/favorites")
 def list_my_favorites(
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ):
-    actor = resolve_actor(db, user)
-    return favorites_payload(db, actor.id)
+    return favorites_payload(db, user.id)
 
 
 @app.post("/api/me/favorites/{pattern_id}", status_code=201)
 def add_my_favorite(
     pattern_id: str,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ):
-    actor = resolve_actor(db, user)
-    return add_favorite_row(db, actor.id, pattern_id)
+    return add_favorite_row(db, user.id, pattern_id)
 
 
 @app.delete("/api/me/favorites/{pattern_id}", status_code=204)
 def remove_my_favorite(
     pattern_id: str,
     db: Session = Depends(get_db),
-    user: User | None = Depends(get_optional_user),
+    user: User = Depends(get_current_user),
 ):
-    actor = resolve_actor(db, user)
-    remove_favorite_row(db, actor.id, pattern_id)
+    remove_favorite_row(db, user.id, pattern_id)
 
 
 @app.get("/api/me/history")

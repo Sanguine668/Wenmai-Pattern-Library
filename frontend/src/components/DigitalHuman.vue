@@ -2,9 +2,12 @@
 import { computed, nextTick, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from './AppIcon.vue'
+import { useAuth } from '../lib/auth'
+import { notify } from '../lib/toast'
 import { patterns } from '../data/patterns'
 
 const router = useRouter()
+const { isAuthenticated } = useAuth()
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 const open = ref(false)
 const input = ref('')
@@ -56,6 +59,11 @@ function localSearch(question) {
 }
 
 async function ask(question) {
+  if (!isAuthenticated.value) {
+    requireLogin()
+    open.value = false
+    return
+  }
   if (!question.trim() || thinking.value) return
   messages.value.push({ role: 'user', text: question.trim(), links: [] })
   input.value = ''
@@ -109,6 +117,22 @@ function useQuick(question) {
   ask(question)
 }
 
+function requireLogin() {
+  notify('请先登录个人账号', 'warning')
+  router.push({
+    path: '/login',
+    query: { redirect: router.currentRoute.value.fullPath },
+  })
+}
+
+function toggleAssistant() {
+  if (!isAuthenticated.value) {
+    requireLogin()
+    return
+  }
+  open.value = !open.value
+}
+
 function openLink(link) {
   if (link.id) {
     router.push(`/patterns/${link.id}`)
@@ -160,7 +184,7 @@ function openLink(link) {
       </section>
     </transition>
 
-    <button class="assistant-trigger" :class="{ 'is-open': open }" @click="open = !open">
+    <button class="assistant-trigger" :class="{ 'is-open': open }" @click="toggleAssistant">
       <AppIcon name="chat" :size="19" />
       <span>纹脉助手</span>
     </button>

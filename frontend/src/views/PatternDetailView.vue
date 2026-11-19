@@ -5,7 +5,9 @@ import AppIcon from '../components/AppIcon.vue'
 import PatternCard from '../components/PatternCard.vue'
 import { patterns as fallbackPatterns } from '../data/patterns'
 import { apiAsset, apiFetch } from '../lib/api'
+import { useAuth } from '../lib/auth'
 import { useLibrary } from '../lib/library'
+import { notify } from '../lib/toast'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,6 +16,7 @@ const loading = ref(true)
 const pattern = ref(null)
 const related = ref([])
 const activeImage = ref('')
+const { isAuthenticated } = useAuth()
 const { isFavorite, toggleFavorite, recordView } = useLibrary()
 
 const displayImage = computed(() => activeImage.value || pattern.value?.image || '')
@@ -77,6 +80,18 @@ function goBackToList() {
     /* 忽略隐私模式下的存储异常 */
   }
   router.push(target)
+}
+
+function handleFavorite() {
+  if (!isAuthenticated.value) {
+    notify('请先登录个人账号', 'warning')
+    router.push({
+      path: '/login',
+      query: { redirect: route.fullPath },
+    })
+    return
+  }
+  toggleFavorite(pattern.value?.id)
 }
 </script>
 
@@ -143,7 +158,7 @@ function goBackToList() {
             <button
               class="btn"
               :class="{ 'btn--primary': isFavorite(pattern.id) }"
-              @click="toggleFavorite(pattern.id)"
+              @click="handleFavorite"
             >
               <AppIcon name="heart" :size="16" />
               {{ isFavorite(pattern.id) ? '已收藏' : '收藏此纹样' }}

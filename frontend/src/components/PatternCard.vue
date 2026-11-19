@@ -1,16 +1,29 @@
 <script setup>
+import { useRouter } from 'vue-router'
 import AppIcon from './AppIcon.vue'
+import { useAuth } from '../lib/auth'
 import { useLibrary } from '../lib/library'
+import { notify } from '../lib/toast'
 
 const props = defineProps({
   pattern: { type: Object, required: true },
   variant: { type: String, default: 'default' },
 })
 const emit = defineEmits(['click'])
+const router = useRouter()
+const { isAuthenticated } = useAuth()
 const { isFavorite, toggleFavorite } = useLibrary()
 
 function onFavorite(event) {
   event.stopPropagation()
+  if (!isAuthenticated.value) {
+    notify('请先登录个人账号', 'warning')
+    router.push({
+      path: '/login',
+      query: { redirect: router.currentRoute.value.fullPath },
+    })
+    return
+  }
   toggleFavorite(props.pattern.id)
 }
 </script>

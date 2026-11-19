@@ -1,5 +1,6 @@
 import { computed, ref } from 'vue'
 import { apiAsset, apiFetch } from './api'
+import { isAuthenticated } from './auth'
 
 const FAVORITES_KEY = 'wenmai:favorites'
 const HISTORY_KEY = 'wenmai:history'
@@ -59,7 +60,7 @@ function isFavorite(id) {
 }
 
 async function toggleFavorite(id) {
-  if (!id) return
+  if (!id || !isAuthenticated.value) return false
   const wasFavorite = isFavorite(id)
   if (wasFavorite) {
     favoriteIds.value = favoriteIds.value.filter((item) => item !== id)

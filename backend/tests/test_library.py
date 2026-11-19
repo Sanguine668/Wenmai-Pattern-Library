@@ -14,40 +14,53 @@ def demo_id_of(client, admin_token):
     return next(item["id"] for item in users if item["username"] == "demo")
 
 
-def favorite_ids(client, token=None):
-    headers = auth_header(token) if token else {}
-    response = client.get("/api/me/favorites", headers=headers)
+def favorite_ids(client, token):
+    response = client.get("/api/me/favorites", headers=auth_header(token))
     assert response.status_code == 200, response.text
     return [item["id"] for item in response.json()["items"]]
 
 
-def test_guest_favorites_fall_back_to_demo(client, admin_token, user_token):
-    demo_id = demo_id_of(client, admin_token)
-    own_id = user_id_of(client, user_token)
-    assert demo_id != own_id
+def test_guest_favorites_require_login(client):
+    assert client.get("/api/me/favorites").status_code == 401
+    assert client.post("/api/me/favorites/cleveland-101142").status_code == 401
+    assert client.delete("/api/me/favorites/cleveland-101142").status_code == 401
 
-    assert client.post("/api/me/favorites/cleveland-101142").status_code == 201
+
+def test_user_favorites_are_private(client, user_token):
     assert (
         client.post(
-            "/api/me/favorites/met-200", headers=auth_header(user_token)
+            "/api/me/favorites/cleveland-101142", headers=auth_header(user_token)
         ).status_code
         == 201
     )
-
-    assert favorite_ids(client) == ["cleveland-101142"]
-    assert favorite_ids(client, user_token) == ["met-200"]
-
-
-def test_guest_can_remove_favorite(client):
-    assert client.post("/api/me/favorites/cleveland-101142").status_code == 201
-    assert client.delete("/api/me/favorites/cleveland-101142").status_code == 204
-    assert favorite_ids(client) == []
+    assert favorite_ids(client, user_token) == ["cleveland-101142"]
+    assert client.get("/api/me/favorites").status_code == 401
 
 
-def test_favorite_is_idempotent(client):
-    assert client.post("/api/me/favorites/cleveland-101142").status_code == 201
-    assert client.post("/api/me/favorites/cleveland-101142").status_code == 201
-    assert favorite_ids(client) == ["cleveland-101142"]
+def test_user_can_remove_favorite(client, user_token):
+    headers = auth_header(user_token)
+    assert (
+        client.post("/api/me/favorites/cleveland-101142", headers=headers).status_code
+        == 201
+    )
+    assert (
+        client.delete("/api/me/favorites/cleveland-101142", headers=headers).status_code
+        == 204
+    )
+    assert favorite_ids(client, user_token) == []
+
+
+def test_favorite_is_idempotent(client, user_token):
+    headers = auth_header(user_token)
+    assert (
+        client.post("/api/me/favorites/cleveland-101142", headers=headers).status_code
+        == 201
+    )
+    assert (
+        client.post("/api/me/favorites/cleveland-101142", headers=headers).status_code
+        == 201
+    )
+    assert favorite_ids(client, user_token) == ["cleveland-101142"]
 
 
 def test_legacy_favorite_routes_require_login_and_self(client, admin_token, user_token):
