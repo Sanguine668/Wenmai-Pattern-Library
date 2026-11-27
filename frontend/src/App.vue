@@ -89,6 +89,7 @@ onMounted(() => {
             <span>{{ favoritesCount }}</span>
           </RouterLink>
           <RouterLink
+            v-if="!isAuthenticated"
             to="/profile"
             class="nav-link nav-link--profile"
             :class="{ 'is-active': isNavActive('/profile') }"
@@ -198,7 +199,7 @@ onMounted(() => {
   width: 100%;
   height: 92px;
   align-items: center;
-  gap: clamp(24px, 2.8vw, 52px);
+  gap: clamp(18px, 2.2vw, 40px);
   padding: 0 clamp(20px, 3.4vw, 60px);
 }
 
@@ -237,8 +238,9 @@ onMounted(() => {
 
 .desktop-nav {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
 .nav-link {
@@ -246,11 +248,12 @@ onMounted(() => {
   display: inline-flex;
   height: 46px;
   align-items: center;
-  padding: 0 24px;
+  padding: 0 18px;
   border-bottom: 3px solid transparent;
   border-radius: 5px 5px 0 0;
   color: var(--ink-soft);
   font-size: 18px;
+  white-space: nowrap;
   transition: background 0.28s var(--ease), color 0.28s var(--ease),
     border-color 0.28s var(--ease);
 }
@@ -270,8 +273,9 @@ onMounted(() => {
 .header-tools {
   display: flex;
   min-width: 0;
+  flex-shrink: 1;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   margin-left: auto;
 }
 
