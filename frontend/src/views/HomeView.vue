@@ -34,6 +34,7 @@ const router = useRouter()
 const query = ref('')
 const featureRail = ref(null)
 let featureTimer = null
+let heroTimer = null
 
 const DYNASTY_META = {
   新石器: { order: 1, years: '约前8000—前2000' },
@@ -80,27 +81,45 @@ const { favoriteItems, historyItems } = useLibrary()
 const algorithmRecommendations = ref([])
 const recommendationStatus = ref('')
 let recommendationRequest = 0
+let recommendationLoading = false
 const recommended = computed(() => isAuthenticated.value
   ? algorithmRecommendations.value : guestRecommendations.value)
 
 async function loadRecommendations() {
   const request = ++recommendationRequest
-  algorithmRecommendations.value = []
-  heroIndex.value = 0
   recommendationStatus.value = ''
   if (!isAuthenticated.value) return
-  recommendationStatus.value = '正在计算推荐…'
+  recommendationLoading = true
+  if (!algorithmRecommendations.value.length) recommendationStatus.value = '正在计算推荐…'
   try {
     const result = await apiFetch('/api/me/recommendations?limit=3')
     if (request !== recommendationRequest) return
     algorithmRecommendations.value = result.items.map(item => ({ ...item, image: apiAsset(item.image) }))
+    heroIndex.value = heroIndex.value % (result.items.length || 1)
     recommendationStatus.value = result.items.length ? '' : '暂无可推荐档案'
   } catch {
     if (request === recommendationRequest) recommendationStatus.value = '推荐暂时无法加载'
+  } finally {
+    if (request === recommendationRequest) recommendationLoading = false
   }
 }
 
-watch([() => currentUser.value?.id, favoriteItems, historyItems], loadRecommendations, { immediate: true })
+watch([() => currentUser.value?.id, favoriteItems, historyItems], (values, previous) => {
+  if (values[0] !== previous?.[0]) {
+    algorithmRecommendations.value = []
+    heroIndex.value = 0
+  }
+  loadRecommendations()
+}, { immediate: true })
+
+function advanceHero() {
+  if (document.hidden) return
+  const completedRound = heroIndex.value === recommended.value.length - 1
+  cycleHero(1)
+  if (isAuthenticated.value && !recommendationLoading && (completedRound || !recommended.value.length)) {
+    loadRecommendations()
+  }
+}
 
 const hero = computed(
   () => recommended.value[heroIndex.value] || recommended.value[0] || patterns[0],
@@ -202,11 +221,15 @@ function startAutoPlay() {
 }
 
 onMounted(() => {
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    heroTimer = window.setInterval(advanceHero, 1000)
+  }
   startAutoPlay()
   loadMeta()
 })
 onBeforeUnmount(() => {
   recommendationRequest += 1
+  window.clearInterval(heroTimer)
   stopAutoPlay()
 })
 </script>
