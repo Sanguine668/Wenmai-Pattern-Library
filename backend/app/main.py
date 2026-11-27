@@ -39,6 +39,7 @@ from .security import (
     verify_password,
 )
 from .serializers import serialize_pattern, serialize_user
+from .recommendations import recommend
 
 
 def ensure_browse_log_unique_index() -> None:
@@ -893,3 +894,12 @@ def browse_history(
     assert_self_or_admin(current, user)
     return history_payload(db, user_id, limit)
 
+
+
+@app.get("/api/me/recommendations")
+def my_recommendations(
+    limit: int = Query(6, ge=1, le=20),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return recommend(db, user, limit)

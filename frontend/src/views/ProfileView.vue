@@ -1,5 +1,6 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { apiAsset, apiFetch } from '../lib/api'
 import { useRoute, useRouter } from 'vue-router'
 import PatternCard from '../components/PatternCard.vue'
 import { useAuth } from '../lib/auth'
@@ -9,16 +10,41 @@ import { notify } from '../lib/toast'
 
 const route = useRoute()
 const router = useRouter()
-const activeTab = ref('favorites')
+const activeTab = ref('recommendations')
 const { favoriteItems, historyItems } = useLibrary()
 const { currentUser, isAuthenticated, isAdmin, logout } = useAuth()
 const { stats } = useLibraryStats()
 
 const favoritePatterns = computed(() => favoriteItems.value)
 const historyPatterns = computed(() => historyItems.value)
+const recommendations = ref([])
+const recommendationError = ref('')
+const loadingRecommendations = ref(false)
+let recommendationRequest = 0
+
+async function loadRecommendations() {
+  const request = ++recommendationRequest
+  recommendations.value = []
+  recommendationError.value = ''
+  if (!isAuthenticated.value) return
+  loadingRecommendations.value = true
+  try {
+    const result = await apiFetch('/api/me/recommendations?limit=6')
+    if (request === recommendationRequest) {
+      recommendations.value = result.items.map(item => ({ ...item, image: apiAsset(item.image) }))
+    }
+  } catch {
+    if (request === recommendationRequest) recommendationError.value = '推荐暂时无法加载，请重试。'
+  } finally {
+    if (request === recommendationRequest) loadingRecommendations.value = false
+  }
+}
+
+watch([() => currentUser.value?.id, favoriteItems, historyItems], loadRecommendations, { immediate: true })
 const denied = computed(() => route.query.denied === 'admin')
 
 const tabs = computed(() => [
+  { id: 'recommendations', label: '为你推荐', count: recommendations.value.length },
   { id: 'favorites', label: '我的收藏', count: favoritePatterns.value.length },
   { id: 'history', label: '浏览记录', count: historyPatterns.value.length },
   { id: 'uploads', label: '上传记录', count: 0 },
@@ -90,6 +116,19 @@ function handleLogout() {
         </button>
       </div>
 
+      <section v-if="activeTab === 'recommendations'" class="profile-content">
+        <button type="button" class="btn" :disabled="loadingRecommendations" @click="loadRecommendations">刷新推荐</button>
+        <p v-if="loadingRecommendations" role="status">正在加载推荐…</p>
+        <p v-else-if="recommendationError" role="alert">{{ recommendationError }}</p>
+        <div v-else-if="recommendations.length" class="profile-grid recommendation-grid">
+          <div v-for="pattern in recommendations" :key="pattern.id">
+            <PatternCard :pattern="pattern" @click="openPattern" />
+            <p class="recommendation-reason">{{ pattern.reason }}</p>
+          </div>
+        </div>
+        <p v-else>暂无可推荐的档案，去纹样库看看吧。</p>
+      </section>
+
       <section v-if="activeTab === 'favorites'" class="profile-content">
         <div v-if="favoritePatterns.length" class="profile-grid">
           <PatternCard
@@ -152,6 +191,9 @@ function handleLogout() {
 </template>
 
 <style scoped>
+.recommendation-grid { margin-top: 20px; }
+.recommendation-reason { margin-top: 8px; color: var(--ink-mute); }
+
 .profile-page {
   padding-top: 44px;
 }

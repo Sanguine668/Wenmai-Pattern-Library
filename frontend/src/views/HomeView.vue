@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import PatternCard from '../components/PatternCard.vue'
@@ -11,6 +11,9 @@ import {
 import { useLibraryStats } from '../lib/stats'
 import { useMeta } from '../lib/meta'
 import { OTHER_MOTIF } from '../data/motifs'
+import { apiAsset, apiFetch } from '../lib/api'
+import { useAuth } from '../lib/auth'
+import { useLibrary } from '../lib/library'
 
 const { stats } = useLibraryStats()
 const {
@@ -54,7 +57,7 @@ const DYNASTY_META = {
 
 const heroIndex = ref(0)
 
-const recommended = computed(() => {
+const guestRecommendations = computed(() => {
   const picks = []
   const add = (item) => {
     if (item && item.image && !picks.some((pick) => pick.id === item.id)) picks.push(item)
@@ -71,6 +74,33 @@ const recommended = computed(() => {
   }
   return picks.slice(0, 3)
 })
+
+const { currentUser, isAuthenticated } = useAuth()
+const { favoriteItems, historyItems } = useLibrary()
+const algorithmRecommendations = ref([])
+const recommendationStatus = ref('')
+let recommendationRequest = 0
+const recommended = computed(() => isAuthenticated.value
+  ? algorithmRecommendations.value : guestRecommendations.value)
+
+async function loadRecommendations() {
+  const request = ++recommendationRequest
+  algorithmRecommendations.value = []
+  heroIndex.value = 0
+  recommendationStatus.value = ''
+  if (!isAuthenticated.value) return
+  recommendationStatus.value = '正在计算推荐…'
+  try {
+    const result = await apiFetch('/api/me/recommendations?limit=3')
+    if (request !== recommendationRequest) return
+    algorithmRecommendations.value = result.items.map(item => ({ ...item, image: apiAsset(item.image) }))
+    recommendationStatus.value = result.items.length ? '' : '暂无可推荐档案'
+  } catch {
+    if (request === recommendationRequest) recommendationStatus.value = '推荐暂时无法加载'
+  }
+}
+
+watch([() => currentUser.value?.id, favoriteItems, historyItems], loadRecommendations, { immediate: true })
 
 const hero = computed(
   () => recommended.value[heroIndex.value] || recommended.value[0] || patterns[0],
@@ -175,7 +205,10 @@ onMounted(() => {
   startAutoPlay()
   loadMeta()
 })
-onBeforeUnmount(stopAutoPlay)
+onBeforeUnmount(() => {
+  recommendationRequest += 1
+  stopAutoPlay()
+})
 </script>
 
 <template>
@@ -200,7 +233,8 @@ onBeforeUnmount(stopAutoPlay)
         </div>
 
         <figure class="hero__plate">
-          <p class="hero__plate-kicker">为你推荐</p>
+          <p class="hero__plate-kicker">{{ isAuthenticated ? '为你推荐' : '馆藏精选' }}</p>
+          <p v-if="recommendationStatus" role="status">{{ recommendationStatus }}</p>
           <div class="hero__stack">
             <div
               v-for="(item, index) in recommended"
@@ -215,7 +249,7 @@ onBeforeUnmount(stopAutoPlay)
               </div>
             </div>
           </div>
-          <figcaption>
+          <figcaption v-if="recommended.length">
             <span class="catalogue-no">{{ hero.catalog }}</span>
             <span class="hero__caption-name">{{ hero.name }}</span>
             <span class="hero__caption-tags">
@@ -231,7 +265,8 @@ onBeforeUnmount(stopAutoPlay)
               ></span>
             </div>
           </figcaption>
-          <div class="hero__stack-nav" aria-label="切换推荐图版">
+          <p v-if="recommended.length && hero.reason" class="hero__recommendation-reason">{{ hero.reason }}</p>
+          <div v-if="recommended.length" class="hero__stack-nav" aria-label="切换推荐图版">
             <button
               type="button"
               class="hero__nav-arrow hero__nav-arrow--prev"
